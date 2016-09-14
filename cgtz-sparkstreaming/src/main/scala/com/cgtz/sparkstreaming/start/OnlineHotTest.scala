@@ -45,8 +45,10 @@ object OnlineHotTest {
      */
     val searchPair = hottestStream.map(_.split(" ")(1)).map(item => (item, 1))
 
-    //一分钟里面每隔20秒更新一次，一个批次为5秒，这是每次都重新算。这里就会得到过去一分钟大家热搜的词或者热点，每隔20秒更新 
-    //val hottestDStream = searchPair.reduceByWindow((v1: Int, v2: Int) => v1 + v2, Seconds(60), Seconds(20))
+    //一分钟里面每隔20秒更新一次，一个批次为5秒，这是每次都重新算。
+    //这里就会得到过去一分钟大家热搜的词或者热点，每隔20秒更新 
+    //val hottestDStream = searchPair.reduceByWindow
+    //((v1: Int, v2: Int) => v1 + v2, Seconds(60), Seconds(20))
 
     //这是加新减旧，第一个参数加上新的，第2个参数，减去过去20秒的
     val hottestDStream = searchPair.
