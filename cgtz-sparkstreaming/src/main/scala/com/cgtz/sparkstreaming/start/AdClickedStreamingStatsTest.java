@@ -482,6 +482,121 @@ public class AdClickedStreamingStatsTest {
 	         }
 	      });
 	      
+	      
+	      /**
+	       * 广告点击累计动态更新,每个updateStateByKey都会在Batch Duration的时间间隔的基础上进行更高点击次数的更新，
+	       * 更新之后我们一般都会持久化到外部存储设备上，在这里我们存储到MySQL数据库中；
+	       */
+	      filteredadClickedStreaming.mapToPair(new PairFunction<Tuple2<String,String>, String, Long>() {
+			private static final long serialVersionUID = 1L;
+			@Override
+			public Tuple2<String, Long> call(Tuple2<String, String> t) throws Exception {
+				String[] splited = t._2.split("\t");
+	            
+	            String timestamp = splited[0]; //yyyy-MM-dd
+	            String ip = splited[1];
+	            String userID = splited[2];
+	            String adID = splited[3];
+	            String province = splited[4];
+	            String city = splited[5];
+	            
+	            String clickedRecord = timestamp + "_" +  adID + "_" 
+	                  + province + "_" + city;
+	            
+	            return new Tuple2<String, Long>(clickedRecord, 1L);
+			}
+		}).updateStateByKey(new Function2<List<Long>, Optional<Long>, Optional<Long>>() {
+			private static final long serialVersionUID = 1L;
+			@Override
+			public Optional<Long> call(List<Long> v1, Optional<Long> v2) throws Exception {
+				/**在历史的数据的基础上进行更新
+	             * v1:代表是当前的key在当前的Batch Duration中出现次数的集合，例如{1,1,1,1,1,1}
+	             * v2:代表当前key在以前的Batch Duration中积累下来的结果；我们要再v2的基础上不断加v1的值
+	             */
+				Long clickedTotalHistory = 0L;
+				if(v2.isPresent()) {//如果v2存在
+		               clickedTotalHistory = v2.get();//拿v2的值
+		        }
+				//不用reduceBykey是因为会产生很多shuffle，shuffle里面有很多内容的。
+				// updateStateByKey可以算过去一天，1年
+				for(Long one : v1){//循环v1
+		             clickedTotalHistory += one;//一直在基础上进行累加
+		        }
+				return Optional.of(clickedTotalHistory);
+			}
+		}).foreachRDD(new Function<JavaPairRDD<String,Long>, Void>() {
+			private static final long serialVersionUID = 1L;
+			@Override
+			public Void call(JavaPairRDD<String, Long> rdd) throws Exception {
+				rdd.foreachPartition(new VoidFunction<Iterator<Tuple2<String,Long>>>() {
+					private static final long serialVersionUID = 1L;
+					@Override
+					public void call(Iterator<Tuple2<String, Long>> partition) throws Exception {
+						/**
+		                   * 在这里我们使用数据库连接池的高效读写数据库的方式把数据写入数据库MySQL;
+		                   * 由于传入的参数是一个Iterator类型的集合，所以为了更加高效的操作我们需要批量处理
+		                   * 例如说一次性插入1000条Record，使用insertBatch或者updateBatch类型的操作；
+		                   * 插入的用户信息可以只包含：timestamp、adID、province、city
+		                   * 这里面有一个问题：可能出现两条记录的Key是一样的，此时就需要更新累加操作
+		                   */
+						List<AdClicked> adClickedList = new ArrayList<AdClicked>();
+
+						while (partition.hasNext()) {
+							Tuple2<String, Long> record = partition.next();
+							String[] splited = record._1.split("\t");
+
+							AdClicked adClicked = new AdClicked();
+							adClicked.setTimestamp(splited[0]);
+							adClicked.setAdID(splited[1]);
+							adClicked.setProvince(splited[2]);
+							adClicked.setCity(splited[3]);
+							adClicked.setClickedCount(record._2);
+
+							adClickedList.add(adClicked);
+
+						}
+						JDBCWrapper jdbcWrapper = JDBCWrapper.getJDBCInstance();
+
+						List<AdClicked> inserting = new ArrayList<AdClicked>();
+						List<AdClicked> updating = new ArrayList<AdClicked>();
+						//adclicked 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
+			               for (AdClicked clicked : adClickedList){
+			                  jdbcWrapper.doQuery("SELECT count(1) FROM adclickedcount WHERE "
+			                        + " timestamp = ? AND adID = ? AND province = ? AND city = ? ",
+			                        new Object[]{clicked.getTimestamp(), clicked.getAdID(), clicked.getProvince(),clicked.getCity()},
+			                        new ExecuteCallBack() {
+			                           
+			                           @Override
+			                           public void resultCallBack(ResultSet result) throws Exception {
+			                              if(result.next()){
+			                                 long count = result.getLong(1);
+			                                 clicked.setClickedCount(count);
+			                                 updating.add(clicked);
+			                              } else {
+			                                 inserting.add(clicked);
+			                              }
+			                              
+			                           }
+			                        });
+			               }
+			            //adclicked 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
+			            ArrayList<Object[]> insertParametersList = new ArrayList<Object[]>();
+			            for(AdClicked inserRecord : inserting){
+			               insertParametersList.add(new Object[]{
+			                     inserRecord.getTimestamp(),
+			                     inserRecord.getAdID(),
+			                     inserRecord.getProvince(),
+			                     inserRecord.getCity(),
+			                     inserRecord.getClickedCount()
+			               });
+			            }
+			            jdbcWrapper.doBatch("INSERT INTO adclickedcount VALUES(?,?,?,?,?)", insertParametersList);
+					}
+				});
+				return null;
+			}
+		});
+	      
 	      /*
 	       * Spark Streaming执行引擎也就是Driver开始运行，Driver启动的时候是位于一条新的线程中的，当然其内部有消息循环体，用于
 	       * 接受应用程序本身或者Executor中的消息；
@@ -711,4 +826,53 @@ class UserAdClicked {
 	public void setCity(String city) {
 		this.city = city;
 	}
+}
+
+class AdClicked {
+	private String timestamp;
+	private String adID;
+	private String province;
+	private String city;
+	private Long clickedCount;
+
+	public String getTimestamp() {
+		return timestamp;
+	}
+
+	public void setTimestamp(String timestamp) {
+		this.timestamp = timestamp;
+	}
+
+	public String getAdID() {
+		return adID;
+	}
+
+	public void setAdID(String adID) {
+		this.adID = adID;
+	}
+
+	public String getProvince() {
+		return province;
+	}
+
+	public void setProvince(String province) {
+		this.province = province;
+	}
+
+	public String getCity() {
+		return city;
+	}
+
+	public void setCity(String city) {
+		this.city = city;
+	}
+
+	public Long getClickedCount() {
+		return clickedCount;
+	}
+
+	public void setClickedCount(Long clickedCount) {
+		this.clickedCount = clickedCount;
+	}
+
 }
