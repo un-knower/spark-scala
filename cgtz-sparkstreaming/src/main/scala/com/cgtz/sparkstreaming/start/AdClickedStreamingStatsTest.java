@@ -131,65 +131,66 @@ public class AdClickedStreamingStatsTest {
 					}
 
 				});
-				 /**
-	             * 黑名单的表中只有userID，但是如果要进行join操作的话，就必须是Key-Value，所以
-	             * 在这里我们需要基于数据表中的数据产生Key-Value类型的数据集合；
-	             */
+				/**
+				 * 黑名单的表中只有userID，但是如果要进行join操作的话，就必须是Key-Value，所以
+				 * 在这里我们需要基于数据表中的数据产生Key-Value类型的数据集合；
+				 */
 				List<Tuple2<String, Boolean>> blackListTuple = new ArrayList<Tuple2<String, Boolean>>();
 				for (String name : blackListNames) {
 					blackListTuple.add(new Tuple2<String, Boolean>(name, true));
 				}
 				// 数据来自于查询的黑名单表并且映射成为<String, Boolean>
 				List<Tuple2<String, Boolean>> blackListFromDB = blackListTuple;
-				
+
 				JavaSparkContext jsc = new JavaSparkContext(arg0.context());
-				JavaPairRDD<String, Boolean> blackListRDD = 
-						jsc.parallelizePairs(blackListFromDB);
-				
-				 /**
-	             * 进行操作的时候肯定是基于userID进行join的，所以必须把传入的rdd进行mapToPair操作转化成为符合
-	             * 格式的rdd
-	             * 
-	             * 广告点击的基本数据格式：timestamp、ip、userID、adID、province、city
-	             */
-				
-				JavaPairRDD<String, Tuple2<String, String>>  rdd2Pair = arg0.mapToPair(new PairFunction<Tuple2<String,String>, String, Tuple2<String,String>>() {
-					private static final long serialVersionUID = 1L;
+				JavaPairRDD<String, Boolean> blackListRDD = jsc.parallelizePairs(blackListFromDB);
 
-					@Override
-		               public Tuple2<String, Tuple2<String, String>> call(Tuple2<String, String> t) throws Exception {
-		                  String userID = t._2.split("\t")[2];
-		                  return new Tuple2<String, Tuple2<String, String>>(userID, t);
-		               }
-		            });
-				JavaPairRDD<String, Tuple2<Tuple2<String, String>, Optional<Boolean>>> joined =
-						rdd2Pair.leftOuterJoin(blackListRDD);
-				
-				JavaPairRDD<String, String> result = 
-						joined.filter(new Function<Tuple2<String,Tuple2<Tuple2<String,String>,
-						Optional<Boolean>>>, Boolean>() {
-						private static final long serialVersionUID = 1L;
-					@Override
-					public Boolean call(Tuple2<String, Tuple2<Tuple2<String, String>,
-							Optional<Boolean>>> v1) throws Exception {
-						Optional<Boolean> optional = v1._2._2;
-						if (optional.isPresent() && optional.get()) {
-							return false;
-						} else {
-							return true;
-						}
-					}
-				}).mapToPair(new PairFunction<Tuple2<String,Tuple2<Tuple2<String,String>,
-						Optional<Boolean>>>, String, String>() {
-					private static final long serialVersionUID = 1L;
+				/**
+				 * 进行操作的时候肯定是基于userID进行join的，所以必须把传入的rdd进行mapToPair操作转化成为符合
+				 * 格式的rdd
+				 * 
+				 * 广告点击的基本数据格式：timestamp、ip、userID、adID、province、city
+				 */
 
-					@Override
-					public Tuple2<String, String> call(
-							Tuple2<String, Tuple2<Tuple2<String, String>, 
-							Optional<Boolean>>> t) throws Exception {
-						return t._2._1;
-					}
-				});
+				JavaPairRDD<String, Tuple2<String, String>> rdd2Pair = arg0
+						.mapToPair(new PairFunction<Tuple2<String, String>, String, Tuple2<String, String>>() {
+							private static final long serialVersionUID = 1L;
+
+							@Override
+							public Tuple2<String, Tuple2<String, String>> call(Tuple2<String, String> t)
+									throws Exception {
+								String userID = t._2.split("\t")[2];
+								return new Tuple2<String, Tuple2<String, String>>(userID, t);
+							}
+						});
+				JavaPairRDD<String, Tuple2<Tuple2<String, String>, Optional<Boolean>>> joined = rdd2Pair
+						.leftOuterJoin(blackListRDD);
+
+				JavaPairRDD<String, String> result = joined.filter(
+						new Function<Tuple2<String, Tuple2<Tuple2<String, String>, Optional<Boolean>>>, Boolean>() {
+							private static final long serialVersionUID = 1L;
+
+							@Override
+							public Boolean call(Tuple2<String, Tuple2<Tuple2<String, String>, Optional<Boolean>>> v1)
+									throws Exception {
+								Optional<Boolean> optional = v1._2._2;
+								if (optional.isPresent() && optional.get()) {
+									return false;
+								} else {
+									return true;
+								}
+							}
+						}).mapToPair(
+								new PairFunction<Tuple2<String, Tuple2<Tuple2<String, String>, Optional<Boolean>>>, String, String>() {
+									private static final long serialVersionUID = 1L;
+
+									@Override
+									public Tuple2<String, String> call(
+											Tuple2<String, Tuple2<Tuple2<String, String>, Optional<Boolean>>> t)
+											throws Exception {
+										return t._2._1;
+									}
+								});
 				return result;
 			}
 		});
@@ -225,8 +226,7 @@ public class AdClickedStreamingStatsTest {
 
 		/*
 		 *
-		 * 计算每个Batch
-		 * Duration中每个User的广告点击量，
+		 * 计算每个Batch Duration中每个User的广告点击量，
 		 * Function2里面的3个long，第一个value，第2个value，第3个是结果值
 		 */
 		JavaPairDStream<String, Long> adClickedUsers = pairs.reduceByKey(new Function2<Long, Long, Long>() {
@@ -241,27 +241,19 @@ public class AdClickedStreamingStatsTest {
 		});
 
 		/**
-	       * 
-	       * 计算出什么叫有效的点击？
-	       * 1，复杂化的一般都是采用机器学习训练好模型直接在线进行过滤；
-	       * 2，简单的？可以通过一个Batch Duration中的点击次数来判断是不是非法广告点击，
-	       * 	但是实际上讲非法广告
-	       * 	点击程序会尽可能模拟真实的广告点击行为，所以通过一个Batch来判断是 不完整的，
-	       * 	我们需要对例如一天（也可以是每一个小时）
-	       * 	的数据进行判断！
-	       * 3，比在线机器学习退而求次的做法如下：
-	       *        例如：一段时间内，同一个IP（MAC地址）有多个用户的帐号访问；
-	       *        例如：可以统一一天内一个用户点击广告的次数，
-	       *        如果一天点击同样的广告操作50次的话，就列入黑名单；
-	       * 
-	       * 黑名单有一个重点的特征：动态生成！！！
-	       * 所以每一个Batch Duration都要考虑是否有新的黑名单加入，此时黑名单需要存储起来
-	       * 具体存储在什么地方呢，存储在DB/Redis中即可；
-	       * 
-	       * 例如邮件系统中的“黑名单”，可以采用Spark Streaming不断的监控每个用户的操作，
-	       * 如果用户发送邮件的频率超过了设定的值，可以
-	       * 暂时把用户列入“黑名单”，从而阻止用户过度频繁的发送邮件。
-	       */
+		 * 
+		 * 计算出什么叫有效的点击？ 1，复杂化的一般都是采用机器学习训练好模型直接在线进行过滤； 2，简单的？可以通过一个Batch
+		 * Duration中的点击次数来判断是不是非法广告点击， 但是实际上讲非法广告
+		 * 点击程序会尽可能模拟真实的广告点击行为，所以通过一个Batch来判断是 不完整的， 我们需要对例如一天（也可以是每一个小时）
+		 * 的数据进行判断！ 3，比在线机器学习退而求次的做法如下： 例如：一段时间内，同一个IP（MAC地址）有多个用户的帐号访问；
+		 * 例如：可以统一一天内一个用户点击广告的次数， 如果一天点击同样的广告操作50次的话，就列入黑名单；
+		 * 
+		 * 黑名单有一个重点的特征：动态生成！！！ 所以每一个Batch Duration都要考虑是否有新的黑名单加入，此时黑名单需要存储起来
+		 * 具体存储在什么地方呢，存储在DB/Redis中即可；
+		 * 
+		 * 例如邮件系统中的“黑名单”，可以采用Spark Streaming不断的监控每个用户的操作， 如果用户发送邮件的频率超过了设定的值，可以
+		 * 暂时把用户列入“黑名单”，从而阻止用户过度频繁的发送邮件。
+		 */
 
 		JavaPairDStream<String, Long> filteredClickInBatch = adClickedUsers
 				.filter(new Function<Tuple2<String, Long>, Boolean>() {
@@ -312,181 +304,167 @@ public class AdClickedStreamingStatsTest {
 						 * Batch里面这个放进去的就是这个用户对这个广告点击的次数，如果发现数据库中有这个数据，，就累加，
 						 * 每10秒更新一次
 						 */
-						  List<UserAdClicked> userAdClickedList = new ArrayList<UserAdClicked>();
-						  while (partition.hasNext()){
-			                     Tuple2<String, Long> record = partition.next();
-			                     String[] splited = record._1.split("\t");
-			                     
-			                     UserAdClicked userClicked = new UserAdClicked();
-			                     userClicked.setTimestamp(splited[0]);
-			                     userClicked.setIp(splited[1]);
-			                     userClicked.setUserID(splited[2]);
-			                     userClicked.setAdID(splited[3]);
-			                     userClicked.setProvince(splited[4]);
-			                     userClicked.setCity(splited[5]);
-			                     userAdClickedList.add(userClicked);
-			                     
-			                  }
-			                  
-			                  List<UserAdClicked> inserting  = new ArrayList<UserAdClicked>();
-			                  List<UserAdClicked> updating  = new ArrayList<UserAdClicked>();
-			                  
-			                  JDBCWrapper jdbcWrapper = JDBCWrapper.getJDBCInstance();
-			                  
-			                  //adclicked 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
-			                  for (UserAdClicked clicked : userAdClickedList){
-			                      jdbcWrapper.doQuery("SELECT count(1) FROM adclicked WHERE "
-			                            + " timestamp = ? AND userID = ? AND adID = ?",
-			                            new Object[]{clicked.getTimestamp(), clicked.getUserID(), clicked.getAdID()},
-			                            new ExecuteCallBack() {
-			                               
-			                               @Override
-			                               public void resultCallBack(ResultSet result) throws Exception {
-			                                  if(result.next()){
-			                                     long count = result.getLong(1);
-			                                     clicked.setClickedCount(count);
-			                                     updating.add(clicked);
-			                                  } else {
-			                                     inserting.add(clicked);
-			                                  }
-			                                  
-			                               }
-			                            });
-			                   }
-			                  
-			                //adclicked 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
-			                  ArrayList<Object[]> insertParametersList = new ArrayList<Object[]>();
-			                  for(UserAdClicked inserRecord : inserting){
-			                     insertParametersList.add(new Object[]{
-			                           inserRecord.getTimestamp(),
-			                           inserRecord.getIp(),
-			                           inserRecord.getUserID(),
-			                           inserRecord.getAdID(),
-			                           inserRecord.getProvince(),
-			                           inserRecord.getCity(),
-			                           inserRecord.getClickedCount()
-			                     });
-			                  }
-			                  jdbcWrapper.doBatch("INSERT INTO adclicked VALUES(?,?,?,?,?,?,?)", insertParametersList);
-			                  
-			                  
-			                  
-			                  //adclicked 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
-			                  ArrayList<Object[]> updateParametersList = new ArrayList<Object[]>();
-			                  for(UserAdClicked updateRecord : updating){
-			                     updateParametersList.add(new Object[]{
-			                           updateRecord.getTimestamp(),
-			                           updateRecord.getIp(),
-			                           updateRecord.getUserID(),
-			                           updateRecord.getAdID(),
-			                           updateRecord.getProvince(),
-			                           updateRecord.getCity(),
-			                           updateRecord.getClickedCount()
-			                     });
-			                  }
-			                  jdbcWrapper.doBatch("UPDATE adclicked set clickedCount = clickedCount + 1 WHERE "
-			                              + " timestamp = ? AND userID = ? AND adID = ?", updateParametersList);
-			                  
-			                  
-			                  
-			                  }
-			               });
+						List<UserAdClicked> userAdClickedList = new ArrayList<UserAdClicked>();
+						while (partition.hasNext()) {
+							Tuple2<String, Long> record = partition.next();
+							String[] splited = record._1.split("\t");
+
+							UserAdClicked userClicked = new UserAdClicked();
+							userClicked.setTimestamp(splited[0]);
+							userClicked.setIp(splited[1]);
+							userClicked.setUserID(splited[2]);
+							userClicked.setAdID(splited[3]);
+							userClicked.setProvince(splited[4]);
+							userClicked.setCity(splited[5]);
+							userAdClickedList.add(userClicked);
+
+						}
+
+						List<UserAdClicked> inserting = new ArrayList<UserAdClicked>();
+						List<UserAdClicked> updating = new ArrayList<UserAdClicked>();
+
+						JDBCWrapper jdbcWrapper = JDBCWrapper.getJDBCInstance();
+
+						// adclicked
+						// 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
+						for (UserAdClicked clicked : userAdClickedList) {
+							jdbcWrapper.doQuery(
+									"SELECT count(1) FROM adclicked WHERE "
+											+ " timestamp = ? AND userID = ? AND adID = ?",
+									new Object[] { clicked.getTimestamp(), clicked.getUserID(), clicked.getAdID() },
+									new ExecuteCallBack() {
+
+										@Override
+										public void resultCallBack(ResultSet result) throws Exception {
+											if (result.next()) {
+												long count = result.getLong(1);
+												clicked.setClickedCount(count);
+												updating.add(clicked);
+											} else {
+												inserting.add(clicked);
+											}
+
+										}
+									});
+						}
+
+						// adclicked
+						// 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
+						ArrayList<Object[]> insertParametersList = new ArrayList<Object[]>();
+						for (UserAdClicked inserRecord : inserting) {
+							insertParametersList.add(new Object[] { inserRecord.getTimestamp(), inserRecord.getIp(),
+									inserRecord.getUserID(), inserRecord.getAdID(), inserRecord.getProvince(),
+									inserRecord.getCity(), inserRecord.getClickedCount() });
+						}
+						jdbcWrapper.doBatch("INSERT INTO adclicked VALUES(?,?,?,?,?,?,?)", insertParametersList);
+
+						// adclicked
+						// 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
+						ArrayList<Object[]> updateParametersList = new ArrayList<Object[]>();
+						for (UserAdClicked updateRecord : updating) {
+							updateParametersList.add(new Object[] { updateRecord.getTimestamp(), updateRecord.getIp(),
+									updateRecord.getUserID(), updateRecord.getAdID(), updateRecord.getProvince(),
+									updateRecord.getCity(), updateRecord.getClickedCount() });
+						}
+						jdbcWrapper.doBatch("UPDATE adclicked set clickedCount = clickedCount + 1 WHERE "
+								+ " timestamp = ? AND userID = ? AND adID = ?", updateParametersList);
+
+					}
+				});
 				return null;
 			}
 		});
-		JavaPairDStream<String, Long> blackListBasedOnHistory = filteredClickInBatch.filter(new Function<Tuple2<String,Long>, Boolean>() {
+		JavaPairDStream<String, Long> blackListBasedOnHistory = filteredClickInBatch
+				.filter(new Function<Tuple2<String, Long>, Boolean>() {
 
-	         @Override
-	         public Boolean call(Tuple2<String, Long> v1) throws Exception {
-	            //广告点击的基本数据格式：timestamp、ip、userID、adID、province、city
-	            String[] splited = v1._1.split("\t");
-	            
-	            String date = splited[0];
-	            String userID = splited[2];
-	            String adID = splited[3];
-	            
-	            /**
-	             * 接下来根据date、userID、adID等条件去查询用户点击广告的数据表，获得总的点击次数
-	             * 这个时候基于点击次数判断是否属于黑名单点击             * 
-	             */
-	            
-	            int clickedCountTotalToday = 81;
-	                  
-	            if (clickedCountTotalToday > 50)
-	            {
-	               return true;
-	            } else {
-	               return false;
-	            }
-	                     
-	         }
-	      });
-	      
-	      
-	      /**
-	       * 必须对黑名单的整个RDD进行去重操作！！！
-	       */
-	      
-	      
-	      JavaDStream<String> blackListuserIDtBasedOnHistory = blackListBasedOnHistory.map(new Function<Tuple2<String,Long>, String>() {
+					@Override
+					public Boolean call(Tuple2<String, Long> v1) throws Exception {
+						// 广告点击的基本数据格式：timestamp、ip、userID、adID、province、city
+						String[] splited = v1._1.split("\t");
 
-	         @Override
-	         public String call(Tuple2<String, Long> v1) throws Exception {
-	            // TODO Auto-generated method stub
-	            return v1._1.split("\t")[2];
-	         }
-	      });
-	      
-	      JavaDStream<String> blackListUniqueuserIDtBasedOnHistory = blackListuserIDtBasedOnHistory.transform(new Function<JavaRDD<String>, JavaRDD<String>>() {
+						String date = splited[0];
+						String userID = splited[2];
+						String adID = splited[3];
 
-	         @Override
-	         public JavaRDD<String> call(JavaRDD<String> rdd) throws Exception {
-	            // TODO Auto-generated method stub
-	            return rdd.distinct();
-	         }
-	      });
-	      
-	      
-	      
-	      //下一步写入黑名单数据表中
-	      
-	      blackListUniqueuserIDtBasedOnHistory.foreachRDD(new Function<JavaRDD<String>, Void>() {
+						/**
+						 * 接下来根据date、userID、adID等条件去查询用户点击广告的数据表，获得总的点击次数
+						 * 这个时候基于点击次数判断是否属于黑名单点击 *
+						 */
 
-	         @Override
-	         public Void call(JavaRDD<String> rdd) throws Exception {
-	            rdd.foreachPartition(new VoidFunction<Iterator<String>>() {
-	               
-	               @Override
-	               public void call(Iterator<String> t) throws Exception {
-	                  /**
-	                   * 在这里我们使用数据库连接池的高效读写数据库的方式把数据写入数据库MySQL;
-	                   * 由于传入的参数是一个Iterator类型的集合，所以为了更加高效的操作我们需要批量处理
-	                   * 例如说一次性插入1000条Record，使用insertBatch或者updateBatch类型的操作；
-	                   * 插入的用户信息可以只包含：useID
-	                   * 此时直接插入黑名单数据表即可。
-	                   */
-	                  
-	                  List<Object[]> blackList = new ArrayList<Object[]>();
-	                  
-	                  while(t.hasNext()){
-	                     blackList.add(new Object[]{(Object)t.next()});
-	                  }
-	                  JDBCWrapper jdbcWrapper = JDBCWrapper.getJDBCInstance();
-	                  jdbcWrapper.doBatch("INSERT INTO blacklisttable VALUES (?) ", blackList);
-	               }
-	            });
-	            return null;
-	         }
-	      });
-	      
-	      /*
-	       * Spark Streaming执行引擎也就是Driver开始运行，Driver启动的时候是位于一条新的线程中的，当然其内部有消息循环体，用于
-	       * 接受应用程序本身或者Executor中的消息；
-	       */
-	      jsc.start();
-	      
-	      jsc.awaitTermination();
-	      jsc.close();
+						int clickedCountTotalToday = 81;
+
+						if (clickedCountTotalToday > 50) {
+							return true;
+						} else {
+							return false;
+						}
+
+					}
+				});
+
+		/**
+		 * 必须对黑名单的整个RDD进行去重操作！！！
+		 */
+
+		JavaDStream<String> blackListuserIDtBasedOnHistory = blackListBasedOnHistory
+				.map(new Function<Tuple2<String, Long>, String>() {
+
+					@Override
+					public String call(Tuple2<String, Long> v1) throws Exception {
+						// TODO Auto-generated method stub
+						return v1._1.split("\t")[2];
+					}
+				});
+
+		JavaDStream<String> blackListUniqueuserIDtBasedOnHistory = blackListuserIDtBasedOnHistory
+				.transform(new Function<JavaRDD<String>, JavaRDD<String>>() {
+
+					@Override
+					public JavaRDD<String> call(JavaRDD<String> rdd) throws Exception {
+						// TODO Auto-generated method stub
+						return rdd.distinct();
+					}
+				});
+
+		// 下一步写入黑名单数据表中
+
+		blackListUniqueuserIDtBasedOnHistory.foreachRDD(new Function<JavaRDD<String>, Void>() {
+
+			@Override
+			public Void call(JavaRDD<String> rdd) throws Exception {
+				rdd.foreachPartition(new VoidFunction<Iterator<String>>() {
+
+					@Override
+					public void call(Iterator<String> t) throws Exception {
+						/**
+						 * 在这里我们使用数据库连接池的高效读写数据库的方式把数据写入数据库MySQL;
+						 * 由于传入的参数是一个Iterator类型的集合，所以为了更加高效的操作我们需要批量处理
+						 * 例如说一次性插入1000条Record，使用insertBatch或者updateBatch类型的操作；
+						 * 插入的用户信息可以只包含：useID 此时直接插入黑名单数据表即可。
+						 */
+
+						List<Object[]> blackList = new ArrayList<Object[]>();
+
+						while (t.hasNext()) {
+							blackList.add(new Object[] { (Object) t.next() });
+						}
+						JDBCWrapper jdbcWrapper = JDBCWrapper.getJDBCInstance();
+						jdbcWrapper.doBatch("INSERT INTO blacklisttable VALUES (?) ", blackList);
+					}
+				});
+				return null;
+			}
+		});
+
+		/*
+		 * Spark
+		 * Streaming执行引擎也就是Driver开始运行，Driver启动的时候是位于一条新的线程中的，当然其内部有消息循环体，用于
+		 * 接受应用程序本身或者Executor中的消息；
+		 */
+		jsc.start();
+
+		jsc.awaitTermination();
+		jsc.close();
 	}
 
 }
