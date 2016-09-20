@@ -6,6 +6,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -22,6 +23,12 @@ import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.api.java.function.VoidFunction;
+import org.apache.spark.sql.DataFrame;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.RowFactory;
+import org.apache.spark.sql.hive.HiveContext;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructType;
 import org.apache.spark.streaming.Durations;
 import org.apache.spark.streaming.api.java.JavaDStream;
 import org.apache.spark.streaming.api.java.JavaPairDStream;
@@ -35,7 +42,10 @@ import kafka.serializer.StringDecoder;
 import scala.Tuple2;
 
 /**
- * 
+ * 此例子综合了
+ * 1.电商广告点击综合案例动态黑名单基于数据库MySQL的真正操作代码实战 
+ * 2.电 商广告点击综合案例通过updateStateByKey等实现广告点击流量的在线更新统计
+ * 3.电商广告点击综合案例在线实现每个Province点击排名Top5广告
  * 在线处理广告点击流 广告点击的基本数据格式：timestamp、ip、userID、adID、province、city
  *
  *
@@ -487,7 +497,8 @@ public class AdClickedStreamingStatsTest {
 	       * 广告点击累计动态更新,每个updateStateByKey都会在Batch Duration的时间间隔的基础上进行更高点击次数的更新，
 	       * 更新之后我们一般都会持久化到外部存储设备上，在这里我们存储到MySQL数据库中；
 	       */
-	      filteredadClickedStreaming.mapToPair(new PairFunction<Tuple2<String,String>, String, Long>() {
+	      JavaPairDStream<String, Long> updateStateByKeyDStream =
+	    		  filteredadClickedStreaming.mapToPair(new PairFunction<Tuple2<String,String>, String, Long>() {
 			private static final long serialVersionUID = 1L;
 			@Override
 			public Tuple2<String, Long> call(Tuple2<String, String> t) throws Exception {
@@ -524,7 +535,9 @@ public class AdClickedStreamingStatsTest {
 		        }
 				return Optional.of(clickedTotalHistory);
 			}
-		}).foreachRDD(new Function<JavaPairRDD<String,Long>, Void>() {
+		});
+	      
+	    updateStateByKeyDStream.foreachRDD(new Function<JavaPairRDD<String,Long>, Void>() {
 			private static final long serialVersionUID = 1L;
 			@Override
 			public Void call(JavaPairRDD<String, Long> rdd) throws Exception {
@@ -591,9 +604,144 @@ public class AdClickedStreamingStatsTest {
 			               });
 			            }
 			            jdbcWrapper.doBatch("INSERT INTO adclickedcount VALUES(?,?,?,?,?)", insertParametersList);
+					
+				         // adclicked
+				         // 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
+				         ArrayList<Object[]> updateParametersList = new ArrayList<Object[]>();
+						for (AdClicked updateRecord : updating) {
+							updateParametersList.add(new Object[] { updateRecord.getTimestamp(), updateRecord.getAdID(),
+									updateRecord.getProvince(), updateRecord.getCity(),
+									updateRecord.getClickedCount() });
+						}
+						jdbcWrapper.doBatch(
+								"UPDATE adclickedcount set clickedCount = ? WHERE "
+										+ " timestamp = ? AND adID = ? AND province = ? AND city = ? ",
+								updateParametersList);
 					}
 				});
 				return null;
+			}
+		});
+	      
+		/**
+		 * 对广告点击进行TopN的计算，计算出每天每个省份的Top5排名的广告； 
+		 * 因为我们直接对RDD进行操作，
+		 * 所以使用了transform算子；
+		 */
+	      updateStateByKeyDStream.transform(new Function<JavaPairRDD<String, Long>,
+	    		  JavaRDD<Row>>() {
+	    	  @Override
+			public JavaRDD<Row> call(JavaPairRDD<String, Long> rdd) throws Exception {
+				JavaRDD<Row> rowRDD = rdd.mapToPair(new PairFunction<Tuple2<String, Long>, String, Long>() {
+
+					@Override
+					public Tuple2<String, Long> call(Tuple2<String, Long> t) throws Exception {
+						String[] splited = t._1.split("_");
+
+						String timestamp = splited[0]; // yyyy-MM-dd
+						String adID = splited[1];
+						String province = splited[2];
+
+						String clickedRecord = timestamp + "_" + adID + "_" + province;
+
+						return new Tuple2<String, Long>(clickedRecord, t._2);
+					}
+				}).reduceByKey(new Function2<Long, Long, Long>() {
+
+					@Override
+					public Long call(Long v1, Long v2) throws Exception {
+						// TODO Auto-generated method stub
+						return v1 + v2;
+					}
+				}).map(new Function<Tuple2<String, Long>, Row>() {
+
+					@Override
+					public Row call(Tuple2<String, Long> v1) throws Exception {
+						String[] splited = v1._1.split("_");
+
+						String timestamp = splited[0]; // yyyy-MM-dd
+						String adID = splited[1];
+						String province = splited[2];
+
+						return RowFactory.create(timestamp, adID, province, v1._2);
+					}
+				});
+
+				StructType structType = DataTypes.createStructType(
+						Arrays.asList(DataTypes.createStructField("timstamp", DataTypes.StringType, true),
+								DataTypes.createStructField("adID", DataTypes.StringType, true),
+								DataTypes.createStructField("province", DataTypes.StringType, true),
+								DataTypes.createStructField("clickedCount", DataTypes.StringType, true)));
+
+				HiveContext hiveContext = new HiveContext(rdd.context());
+
+				DataFrame df = hiveContext.createDataFrame(rowRDD, structType);
+
+				df.registerTempTable("topNTableSource");
+
+				DataFrame result = hiveContext.sql("SELECT timstamp,adID,province,clickedCount FROM"
+						+ " (SELECT timstamp,adID,province,clickedCount, ROW_NUMBER() "
+						+ "OVER(PARTITION BY province ORDER BY clickedCount DESC) rank"
+						+ " FROM topNTableSource) subquery " + "WHERE rank <= 5");
+
+				return result.toJavaRDD();
+			}
+		}).foreachRDD(new Function<JavaRDD<Row>, Void>() {
+
+			@Override
+			public Void call(JavaRDD<Row> rdd) throws Exception {
+
+				rdd.foreachPartition(new VoidFunction<Iterator<Row>>() {
+
+					@Override
+					public void call(Iterator<Row> t) throws Exception {
+
+						List<AdProvinceTopN> adProvinceTopN = new ArrayList<AdProvinceTopN>();
+
+						while (t.hasNext()) {
+							Row row = t.next();
+							AdProvinceTopN item = new AdProvinceTopN();
+							item.setTimestamp(row.getString(0));
+							item.setAdID(row.getString(1));
+							item.setProvince(row.getString(2));
+							item.setClickedCount(row.getString(3));
+
+							adProvinceTopN.add(item);
+						}
+
+						JDBCWrapper jdbcWrapper = JDBCWrapper.getJDBCInstance();
+
+						Set<String> set = new HashSet<String>();
+						for (AdProvinceTopN item : adProvinceTopN) {
+							set.add(item.getTimestamp() + "_" + item.getProvince());
+						}
+
+						// adclicked
+						// 表的字段：timestamp、ip、userID、adID、province、city、clickedCount
+						ArrayList<Object[]> deleteParametersList = new ArrayList<Object[]>();
+						for (String deleteRecord : set) {
+							String[] splited = deleteRecord.split("_");
+							deleteParametersList.add(new Object[] { splited[0], splited[1] });
+						}
+						jdbcWrapper.doBatch("DELETE FROM adprovincetopn WHERE "
+								+ "timestamp = ? AND province = ?",
+								deleteParametersList);
+
+						// adprovincetopn
+						// 表的字段：timestamp、adID、province、clickedCount
+						ArrayList<Object[]> insertParametersList = new ArrayList<Object[]>();
+						for (AdProvinceTopN updateRecord : adProvinceTopN) {
+							insertParametersList.add(new Object[] { updateRecord.getTimestamp(), updateRecord.getAdID(),
+									updateRecord.getProvince(), updateRecord.getClickedCount() });
+						}
+						jdbcWrapper.doBatch("INSERT INTO adprovincetopn VALUES (?,?,?,?) ",
+								insertParametersList);
+
+					}
+				});
+
+				return null;
+
 			}
 		});
 	      
@@ -875,4 +1023,44 @@ class AdClicked {
 		this.clickedCount = clickedCount;
 	}
 
+}
+
+class AdProvinceTopN {
+	private String timestamp;
+	private String adID;
+
+	public String getTimestamp() {
+		return timestamp;
+	}
+
+	public void setTimestamp(String timestamp) {
+		this.timestamp = timestamp;
+	}
+
+	public String getAdID() {
+		return adID;
+	}
+
+	public void setAdID(String adID) {
+		this.adID = adID;
+	}
+
+	public String getProvince() {
+		return province;
+	}
+
+	public void setProvince(String province) {
+		this.province = province;
+	}
+
+	public String getClickedCount() {
+		return clickedCount;
+	}
+
+	public void setClickedCount(String clickedCount) {
+		this.clickedCount = clickedCount;
+	}
+
+	private String province;
+	private String clickedCount;
 }
