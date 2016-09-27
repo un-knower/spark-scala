@@ -33,11 +33,16 @@ object KMeansLearning2 {
      * 2 3 7057 9810 9568 1762 3293 1776
      * 2 3 6353 8808 7684 2405 3516 7844
      */
-    val rawTrainingData = sc.textFile("data/Wholesale customers data.csv")
+    val rawTrainingData = sc.textFile("data/Wholesale customers data.txt")
     // 数据处理
     val parsedTrainingData = rawTrainingData.filter(!isColumnNameLine(_)).map(line => {
-      Vectors.dense(line.split("\t").map(_.trim()).filter(!"".equals(_)).map(_.toDouble))
+      Vectors.dense(line.split(",").map(_.trim()).filter(!"".equals(_)).map(_.toDouble))
     }).cache()
+    
+    val splits = parsedTrainingData.randomSplit(Array(0.6, 0.4), seed = 3L)
+    val parsedData = splits(0) //分割训练数据
+    val parseTtest = splits(1) //分割测试数据
+    
     // 最大分类数
     val numClusters = 8
     // 迭代次数
@@ -46,18 +51,35 @@ object KMeansLearning2 {
     val runTimes = 3
 
     var clusterIndex = 0
-    val clusters = KMeans.train(parsedTrainingData, numClusters, numIterations, runTimes)
-    println("Cluster Number:" + clusters.clusterCenters.length)
+    val clustersModel = KMeans.train(parsedData, numClusters, numIterations, runTimes)
+    println("Cluster Number:" + clustersModel.clusterCenters.length)
     println("Cluster Centers Information Overview:")
-    clusters.clusterCenters.foreach(
+    clustersModel.clusterCenters.foreach(
       x => {
         println("Center Point of Cluster " + clusterIndex + ":")
         println(x)
         clusterIndex += 1
       })
 
+    // 如何选择 K
+    // 前面提到 K 的选择是 K-means 算法的关键，Spark MLlib 在 KMeansModel 类里提供了 computeCost 方法，
+    // 该方法通过计算所有数据点到其最近的中心点的平方和来评估聚类的效果。
+    // 一般来说，同样的迭代次数和算法跑的次数，这个值越小代表聚类的效果越好。
+    // 但是在实际情况下，我们还要考虑到聚类结果的可解释性，
+    // 不能一味的选择使 computeCost 结果值最小的那个 K。
+    val ks: Array[Int] = Array(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
+    ks.foreach(cluster => {
+      val model: KMeansModel = KMeans.train(parsedTrainingData, cluster, 30, 1)
+      val ssd = model.computeCost(parsedTrainingData)
+      println("sum of squared distances of points to their nearest center when k=" + cluster + " -> " + ssd)
+    })
+
     //begin to check which cluster each test data belongs to based on the clustering result
-     
+    parseTtest.collect().foreach(testDataLine => {
+      val predictedClusterIndex = clustersModel.predict(testDataLine)
+      println("The data " + testDataLine.toString + " belongs to cluster " + predictedClusterIndex)
+    })
+    println("Spark MLlib K-means clustering test finished.")
   }
 
   private def isColumnNameLine(line: String): Boolean = {

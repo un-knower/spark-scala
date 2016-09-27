@@ -23,13 +23,16 @@ import com.cgtz.risk.utils.SimilarityUtils;
 public class FindFromBlackBySimilarJoin {
 	@SuppressWarnings("resource")
 	public static void main(String[] args) {
-		SparkConf sparkConf = new SparkConf().setMaster("local[10]")
+		SparkConf sparkConf = new SparkConf()
+//		.setMaster("local[3]")
 				.setAppName("FindFromBlackBySimilarJoin");
 		JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
 
 		// 1.获取用户数据，切割成key-value
 		JavaRDD<String> user_rowRDD = sparkContext
-				.textFile("data/user_all.txt");
+				.textFile(args[0],3)
+//				.textFile("data/user_all.txt")
+				;
 		JavaPairRDD<String, String> line_rowRDD = user_rowRDD
 				.mapToPair(new PairFunction<String, String, String>() {
 					private static final long serialVersionUID = 1L;
@@ -73,7 +76,9 @@ public class FindFromBlackBySimilarJoin {
 
 		// 4.获取黑名单记录
 		JavaRDD<String> black_rowRDD = sparkContext
-				.textFile("data/k_blacklist_user_info.txt");
+				.textFile(args[1],3)
+//				.textFile("data/k_blacklist_user_info.txt")
+				;
 		JavaRDD<String> line_blackRDD = black_rowRDD.map(
 				new Function<String, String>() {
 					private static final long serialVersionUID = 1L;
@@ -85,7 +90,7 @@ public class FindFromBlackBySimilarJoin {
 					public String call(String arg0) throws Exception {
 						// 获取黑名单数据
 						String fields[] = arg0.split("\t");
-						String line;
+						String line = "";
 						// 四个字段
 						if (fields.length == 4) {
 							line = fields[1] + fields[2] + fields[3];
@@ -93,7 +98,7 @@ public class FindFromBlackBySimilarJoin {
 						} else if (fields.length == 3) {
 							line = fields[1] + fields[2];
 							// 两个字段
-						} else {
+						} else if(fields.length == 2){
 							line = fields[1];
 						}
 
@@ -102,7 +107,7 @@ public class FindFromBlackBySimilarJoin {
 							String key = tu._1;
 							String value = tu._2;
 							double sim = SimilarityUtils.sim(line, value);
-							if (sim >= 0.6d) {
+							if (sim >= 0.8d) {
 								return key + "	" + sim;
 							}
 						}
@@ -110,7 +115,6 @@ public class FindFromBlackBySimilarJoin {
 					}
 				}).filter(new Function<String, Boolean>() {
 			private static final long serialVersionUID = 1L;
-
 			@Override
 			public Boolean call(String v1) throws Exception {
 				if (null != v1 && !"".equals(v1.trim())) {
@@ -119,11 +123,17 @@ public class FindFromBlackBySimilarJoin {
 				return false;
 			}
 		});
+		
+		line_blackRDD.repartition(1);
+		
+		
 		// 保存到数据库中
-		List<String> user_com_list = line_blackRDD.collect();
-
-		for (String user_com : user_com_list) {
-			System.out.println(user_com);
-		}
+		line_blackRDD.saveAsTextFile(args[2]);
+//		line_blackRDD.saveAsTextFile("hdfs://172.16.39.51:8020/user/liuxing/risk/circle/result");
+//		List<String> user_com_list = line_blackRDD.collect();
+//
+//		for (String user_com : user_com_list) {
+//			System.out.println(user_com);
+//		}
 	}
 }

@@ -24,6 +24,14 @@ object KMeansLearning {
     val numIterations = 20
     // 训练模型
     val clusters = KMeans.train(parsedData, numClusters, numIterations)
+    
+    val ks: Array[Int] = Array(1,2,3, 4, 5, 6, 7)
+    ks.foreach(cluster => {
+      val model: KMeansModel = KMeans.train(parsedData, cluster, 20, 1)
+      val ssd = model.computeCost(parsedData)
+      println("sum of squared distances of points to their nearest center when k=" + cluster + " -> " + ssd)
+    })
+    
     // 评估模型
     val WSSSE = clusters.computeCost(parsedData)
     println("Within Set Sum of Squared Errors = " + WSSSE)
