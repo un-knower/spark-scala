@@ -87,9 +87,9 @@ object naiveBayesEmotionAnalysis {
       map(p=>(NBmodel.predict(p.features), p.label))
     val accuracy = 1.0 * predictionAndLabel.filter(x => x._1 == x._2).count() / test.count()
   
-    val yourDocument
+    val yourDocument = null
     //=input("输入待分类的评论：")
-    val yourwords
+    val yourwords = null
     //="/".join(jieba.cut_for_search(yourDocument)).split("/")
     val yourtf = hashingTF.transform(yourwords)
     val yourtfidf=idfModel.transform(yourtf)
