@@ -26,6 +26,20 @@
   </properties>
 
   <dependencies>
+  	<!-- IKAnalyzer start -->
+	<dependency>  
+	       <groupId>org.wltea.ik-analyzer</groupId>  
+	       <artifactId>ik-analyzer</artifactId>  
+	       <version>3.2.8</version>  
+	</dependency> 
+  	<!-- IKAnalyzer end -->
+  	<!-- JIEBA start -->
+	<dependency>
+	    <groupId>com.huaban</groupId>
+	    <artifactId>jieba-analysis</artifactId>
+	    <version>1.0.2</version>
+	</dependency>
+  	<!-- JIEBA end -->
 	<!-- JBLAS start -->
 	<dependency>
 		<groupId>org.jblas</groupId>

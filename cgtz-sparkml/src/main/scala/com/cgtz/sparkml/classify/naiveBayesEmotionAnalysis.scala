@@ -2,11 +2,10 @@ package com.cgtz.sparkml.classify
 
 import org.apache.spark.SparkConf
 import org.apache.spark.SparkContext
-import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.classification.NaiveBayes
-import org.apache.spark.mllib.feature.HashingTF
-import org.apache.spark.mllib.feature.IDF
+import org.apache.spark.ml.feature.IDF
+import org.apache.spark.ml.feature.HashingTF
+
 
 
 /**
