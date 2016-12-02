@@ -1,0 +1,226 @@
+Description of the German credit dataset.
+
+1. Title: German Credit data
+
+2. Source Information
+
+Professor Dr. Hans Hofmann  
+Institut f"ur Statistik und "Okonometrie  
+Universit"at Hamburg  
+FB Wirtschaftswissenschaften  
+Von-Melle-Park 5    
+2000 Hamburg 13 
+
+3. Number of Instances:  1000
+
+Two datasets are provided.  the original dataset, in the form provided
+by Prof. Hofmann, contains categorical/symbolic attributes and
+is in the file "german.data".   
+ 
+For algorithms that need numerical attributes, Strathclyde University 
+produced the file "german.data-numeric".  This file has been edited 
+and several indicator variables added to make it suitable for 
+algorithms which cannot cope with categorical variables.   Several
+attributes that are ordered categorical (such as attribute 17) have
+been coded as integer.    This was the form used by StatLog.
+
+
+6. Number of Attributes german: 20 (7 numerical, 13 categorical)
+   Number of Attributes german.numer: 24 (24 numerical)
+
+
+7.  Attribute description for german
+
+Attribute 1:  (qualitative)
+			现有的支票账户的状态
+	       Status of existing checking account
+               A11 :      ... <    0 DM
+	       A12 : 0 <= ... <  200 DM
+	       A13 :      ... >= 200 DM /
+	       		工资分配至少1年
+		     salary assignments for at least 1 year
+               A14 : no checking account
+
+Attribute 2:  (numerical)
+			贷款月数
+	      Duration in month
+
+Attribute 3:  (qualitative)
+			贷款记录
+	      Credit history
+			 没有贷款/
+			全部付清
+	      A30 : no credits taken/
+		    all credits paid back duly
+		    在这家银行的所有贷款都按时归还
+              A31 : all credits at this bank paid back duly
+       	     现有的贷款偿还如期到现在
+	      A32 : existing credits paid back duly till now
+			      延迟偿还过去
+              A33 : delay in paying off in the past
+		              关键账户/
+			  其他现有信用(不是在这个银行)
+	      A34 : critical account/
+		    other credits existing (not at this bank)
+
+Attribute 4:  (qualitative)
+			贷款的目的
+	      Purpose
+	      A40 : car (new)
+	      A41 : car (used)
+	      A42 : furniture/equipment
+	      A43 : radio/television
+	      A44 : domestic appliances
+	      A45 : repairs
+	      A46 : education
+	      A47 : (vacation - does not exist?)
+	      A48 : retraining
+	      A49 : business
+	      A410 : others
+
+Attribute 5:  (numerical)
+		 	 贷款金额
+	      Credit amount
+
+Attibute 6:  (qualitative)
+			储蓄账户/债券
+	      Savings account/bonds
+	      A61 :          ... <  100 DM
+	      A62 :   100 <= ... <  500 DM
+	      A63 :   500 <= ... < 1000 DM
+	      A64 :          .. >= 1000 DM
+              A65 :   unknown/ no savings account
+
+Attribute 7:  (qualitative)
+			工作时长
+	      Present employment since
+	      A71 : unemployed
+	      A72 :       ... < 1 year
+	      A73 : 1  <= ... < 4 years  
+	      A74 : 4  <= ... < 7 years
+	      A75 :       .. >= 7 years
+
+Attribute 8:  (numerical)
+		  	分期付款率按可支配收入的百分比计算
+	      Installment rate in percentage of disposable income
+
+Attribute 9:  (qualitative)
+			个人地位和性别
+	      Personal status and sex
+	      					离婚/分居
+	      A91 : male   : divorced/separated
+	      					离婚/分居/结婚
+	      A92 : female : divorced/separated/married
+              A93 : male   : single
+              				已婚/丧偶
+	      A94 : male   : married/widowed
+	      A95 : female : single
+
+Attribute 10: (qualitative)
+			其他债务人/担保人
+	      Other debtors / guarantors
+	      A101 : none
+	      		 	共同申请人
+	      A102 : co-applicant
+	      			担保人
+	      A103 : guarantor
+
+Attribute 11: (numerical)
+			现在居住自
+	      Present residence since
+
+Attribute 12: (qualitative)
+			财产
+	      Property
+	      			房地产
+	      A121 : real estate
+	      				建筑协会储蓄协议/
+						人寿保险
+	      A122 : if not A121 : building society savings agreement/
+				   life insurance
+              A123 : if not A121/A122 : car or other, not in attribute 6
+              		没有财产
+	      A124 : unknown / no property
+
+Attribute 13: (numerical)
+			年龄
+	      Age in years
+
+Attribute 14: (qualitative)
+			其他分期付款计划
+	      Other installment plans 
+	      A141 : bank
+	      A142 : stores
+	      A143 : none
+
+Attribute 15: (qualitative)
+			住房
+	      Housing
+	      		出租
+	      A151 : rent
+	      		自己
+	      A152 : own
+	      		免费
+	      A153 : for free
+
+Attribute 16: (numerical)
+				在该银行有几张信用卡
+              Number of existing credits at this bank
+
+Attribute 17: (qualitative)
+			工作
+	      Job	
+	      		失业/非技术 - 非居民
+	      A171 : unemployed/ unskilled  - non-resident
+	      		非技术 - 非居民
+	      A172 : unskilled - resident
+	      		熟练的员工/官员
+	      A173 : skilled employee / official
+	      		管理/个体经营/
+				高度合格的员工/官员
+	      A174 : management/ self-employed/
+		     highly qualified employee/ officer
+
+Attribute 18: (numerical)
+			保证人数
+	      Number of people being liable to provide maintenance for
+
+Attribute 19: (qualitative)
+			电话
+	      Telephone
+	      A191 : none
+	      			是，注册在客户名称下
+	      A192 : yes, registered under the customers name
+
+Attribute 20: (qualitative)
+			外国工人
+	      foreign worker
+	      A201 : yes
+	      A202 : no
+
+
+成本矩阵这个数据集需要使用成本矩阵(见下文)
+8.  Cost Matrix
+
+This dataset requires use of a cost matrix (see below)
+
+
+      1        2
+----------------------------
+  1   0        1
+-----------------------
+  2   5        0
+
+(1 = Good,  2 = Bad)
+
+行表示实际分类和列
+预测分类。
+the rows represent the actual classification and the columns
+the predicted classification.
+
+更糟的是，当他们坏（5）时，将客户分类为好，
+比它是一个客户，当他们是好的（1）。
+It is worse to class a customer as good when they are bad (5), 
+than it is to class a customer as bad when they are good (1).
+
+
